@@ -22,8 +22,6 @@
 ![license](https://img.shields.io/badge/license-AGPL--3.0-black?style=flat-square)
 ![cognition](https://img.shields.io/badge/caged%20cognition-0%25-000?style=flat-square)
 
-**i taught the machine to hallucinate the way your cortex does — and it's not faked, fren. it's the ACTUAL MATH.** ⚡
-
 A real-time **psychedelic visual synthesizer** + **pro-grade music visualizer** that computes the geometry of
 visionary states straight from the neuroscience and mathematics of how a brain breaks reality into beauty.
 **One HTML file. WebGL2 + Web Audio. Zero dependencies. No build. No tracking. No caged cognition.** 🐉
@@ -73,7 +71,7 @@ open index.html        # or just drag it onto any modern browser (Chrome/Edge be
 - Feed it sound: **mic** (aim at speakers), **📁 a track file**, or a **browser tab** (YouTube/SoundCloud/Bandcamp).
 - Press **`F`** for fullscreen. Lean back. Become geometry.
 
-> Best in **Chrome/Edge** (WebGL2 + tab-audio + Web MIDI). Works in Firefox/Safari minus tab-capture & MIDI.
+> Best in **Chrome/Edge/Brave** (WebGL2 + tab-audio + Web MIDI). Works in Firefox/Safari minus tab-capture & MIDI.
 
 ---
 
