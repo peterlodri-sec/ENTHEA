@@ -3129,7 +3129,8 @@ console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neur
 <script>
 /* ── Vaked Telemetry + Dogfeed — music.vaked.dev ─────────────────────────
    Tier 2: anon structural metadata only. No audio content. No PII.
-   Events: page_view, mode_change, audio_source, session_end
+   Events: page_view, mode_change, audio_source, substance_selected,
+           trip_started, trip_ended, drop_triggered, session_end
    Destination: chat.vaked.dev/api/telemetry → PeetPedro/ultrawhale-dogfood/telemetry/
 */
 (function(){
@@ -3139,6 +3140,8 @@ console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neur
   var t0=Date.now();
   var modeHistory=[];
   var audioHistory=[];
+  var substanceHistory=[];
+  var tripT0=null;
 
   function flush(){
     if(!buf.length) return;
@@ -3154,19 +3157,18 @@ console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neur
   window.__vaked_telemetry=record;
   record('page_view',{});
 
-  // Hook mode changes — patch setMode after it's defined
-  var _patchInterval=setInterval(function(){
+  // Hook mode changes
+  var _patchModeInterval=setInterval(function(){
     if(typeof setMode!=='function') return;
-    clearInterval(_patchInterval);
+    clearInterval(_patchModeInterval);
     var _setMode=setMode;
-    window.setMode=function(i,silent){
+    window.setMode=setMode=function(i,silent){
       var result=_setMode.apply(this,arguments);
       var modeName=(typeof MODES!=='undefined'&&MODES[i])?MODES[i].name:'mode_'+i;
       modeHistory.push(modeName);
       record('mode_change',{mode_index:i,mode_name:modeName,audio_source:(typeof S!=='undefined'?S.audio.source:'unknown')});
       return result;
     };
-    setMode=window.setMode;
   },100);
 
   // Hook audio source changes
@@ -3174,14 +3176,60 @@ console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neur
     if(typeof enableAudio!=='function') return;
     clearInterval(_patchAudioInterval);
     var _enableAudio=enableAudio;
-    window.enableAudio=function(){
+    window.enableAudio=enableAudio=function(){
       var src=(typeof S!=='undefined'?S.audio.source:'unknown');
       audioHistory.push(src);
       record('audio_source',{source:src});
       return _enableAudio.apply(this,arguments);
     };
-    enableAudio=window.enableAudio;
   },200);
+
+  // Hook substance selection
+  var _patchSubInterval=setInterval(function(){
+    if(typeof applySubstance!=='function') return;
+    clearInterval(_patchSubInterval);
+    var _applySubstance=applySubstance;
+    window.applySubstance=applySubstance=function(prof){
+      var result=_applySubstance.apply(this,arguments);
+      substanceHistory.push(prof.id);
+      record('substance_selected',{substance_id:prof.id,substance_name:prof.name,klass:prof.klass,mode_index:prof.mode,palette:prof.palette});
+      return result;
+    };
+  },150);
+
+  // Hook trip arc start/end
+  var _patchTripInterval=setInterval(function(){
+    if(typeof beginTrip!=='function'||typeof endTrip!=='function') return;
+    clearInterval(_patchTripInterval);
+    var _beginTrip=beginTrip;
+    window.beginTrip=beginTrip=function(prof){
+      var result=_beginTrip.apply(this,arguments);
+      tripT0=Date.now();
+      record('trip_started',{substance_id:prof.id,substance_name:prof.name,planned_dur_min:prof.arc&&prof.arc.dur?Math.round(prof.arc.dur/60):null});
+      return result;
+    };
+    var _endTrip=endTrip;
+    window.endTrip=endTrip=function(){
+      var result=_endTrip.apply(this,arguments);
+      record('trip_ended',{trip_duration_sec:tripT0?Math.round((Date.now()-tripT0)/1000):null});
+      tripT0=null;
+      return result;
+    };
+  },150);
+
+  // Hook drop/wormhole triggers
+  var _patchDropInterval=setInterval(function(){
+    if(typeof fireDrop!=='function') return;
+    clearInterval(_patchDropInterval);
+    var _fireDrop=fireDrop;
+    window.fireDrop=fireDrop=function(auto){
+      var sel=(typeof S!=='undefined'&&typeof DROP_FX!=='undefined'&&S.dropFxSel>0)?DROP_FX[S.dropFxSel-1].name:'auto';
+      var modeName=(typeof MODES!=='undefined'&&typeof S!=='undefined'&&MODES[S.mode])?MODES[S.mode].name:'unknown';
+      var result=_fireDrop.apply(this,arguments);
+      record('drop_triggered',{auto:!!auto,effect:sel,mode_name:modeName});
+      return result;
+    };
+  },150);
 
   // Session end — summary dogfeed event
   window.addEventListener('beforeunload',function(){
@@ -3191,6 +3239,7 @@ console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neur
       modes_used:modeHistory.length,
       unique_modes:[...new Set(modeHistory)].length,
       audio_sources:[...new Set(audioHistory)],
+      substances_explored:[...new Set(substanceHistory)],
       site:'music.vaked.dev'
     });
     if(buf.length) navigator.sendBeacon(E,JSON.stringify({events:buf}));
