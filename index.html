@@ -3130,7 +3130,9 @@ console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neur
 /* ── Vaked Telemetry + Dogfeed — music.vaked.dev ─────────────────────────
    Tier 2: anon structural metadata only. No audio content. No PII.
    Events: page_view, mode_change, audio_source, substance_selected,
-           trip_started, trip_ended, drop_triggered, session_end
+           trip_started, trip_ended, drop_triggered, wallpaper_toggled,
+           autopilot_toggled, science_opened, scene_saved, scene_recalled,
+           session_end
    Destination: chat.vaked.dev/api/telemetry → PeetPedro/ultrawhale-dogfood/telemetry/
 */
 (function(){
@@ -3157,79 +3159,95 @@ console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neur
   window.__vaked_telemetry=record;
   record('page_view',{});
 
-  // Hook mode changes
-  var _patchModeInterval=setInterval(function(){
-    if(typeof setMode!=='function') return;
-    clearInterval(_patchModeInterval);
-    var _setMode=setMode;
-    window.setMode=setMode=function(i,silent){
-      var result=_setMode.apply(this,arguments);
-      var modeName=(typeof MODES!=='undefined'&&MODES[i])?MODES[i].name:'mode_'+i;
-      modeHistory.push(modeName);
-      record('mode_change',{mode_index:i,mode_name:modeName,audio_source:(typeof S!=='undefined'?S.audio.source:'unknown')});
-      return result;
-    };
-  },100);
+  // All functions are top-level hoisted declarations — patch synchronously, no polling needed
 
-  // Hook audio source changes
-  var _patchAudioInterval=setInterval(function(){
-    if(typeof enableAudio!=='function') return;
-    clearInterval(_patchAudioInterval);
-    var _enableAudio=enableAudio;
-    window.enableAudio=enableAudio=function(){
-      var src=(typeof S!=='undefined'?S.audio.source:'unknown');
-      audioHistory.push(src);
-      record('audio_source',{source:src});
-      return _enableAudio.apply(this,arguments);
-    };
-  },200);
+  var _setMode=setMode;
+  window.setMode=setMode=function(i,silent){
+    var result=_setMode.apply(this,arguments);
+    var modeName=MODES[i]?MODES[i].name:'mode_'+i;
+    modeHistory.push(modeName);
+    record('mode_change',{mode_index:i,mode_name:modeName,audio_source:S.audio.source});
+    return result;
+  };
 
-  // Hook substance selection
-  var _patchSubInterval=setInterval(function(){
-    if(typeof applySubstance!=='function') return;
-    clearInterval(_patchSubInterval);
-    var _applySubstance=applySubstance;
-    window.applySubstance=applySubstance=function(prof){
-      var result=_applySubstance.apply(this,arguments);
-      substanceHistory.push(prof.id);
-      record('substance_selected',{substance_id:prof.id,substance_name:prof.name,klass:prof.klass,mode_index:prof.mode,palette:prof.palette});
-      return result;
-    };
-  },150);
+  var _enableAudio=enableAudio;
+  window.enableAudio=enableAudio=async function(){
+    audioHistory.push(S.audio.source);
+    record('audio_source',{source:S.audio.source});
+    return _enableAudio.apply(this,arguments);
+  };
 
-  // Hook trip arc start/end
-  var _patchTripInterval=setInterval(function(){
-    if(typeof beginTrip!=='function'||typeof endTrip!=='function') return;
-    clearInterval(_patchTripInterval);
-    var _beginTrip=beginTrip;
-    window.beginTrip=beginTrip=function(prof){
-      var result=_beginTrip.apply(this,arguments);
-      tripT0=Date.now();
-      record('trip_started',{substance_id:prof.id,substance_name:prof.name,planned_dur_min:prof.arc&&prof.arc.dur?Math.round(prof.arc.dur/60):null});
-      return result;
-    };
-    var _endTrip=endTrip;
-    window.endTrip=endTrip=function(){
-      var result=_endTrip.apply(this,arguments);
-      record('trip_ended',{trip_duration_sec:tripT0?Math.round((Date.now()-tripT0)/1000):null});
-      tripT0=null;
-      return result;
-    };
-  },150);
+  var _applySubstance=applySubstance;
+  window.applySubstance=applySubstance=function(prof){
+    var result=_applySubstance.apply(this,arguments);
+    substanceHistory.push(prof.id);
+    record('substance_selected',{substance_id:prof.id,substance_name:prof.name,klass:prof.klass,mode_index:prof.mode,palette:prof.palette});
+    return result;
+  };
 
-  // Hook drop/wormhole triggers
-  var _patchDropInterval=setInterval(function(){
-    if(typeof fireDrop!=='function') return;
-    clearInterval(_patchDropInterval);
-    var _fireDrop=fireDrop;
-    window.fireDrop=fireDrop=function(auto){
-      var sel=(typeof S!=='undefined'&&typeof DROP_FX!=='undefined'&&S.dropFxSel>0)?DROP_FX[S.dropFxSel-1].name:'auto';
-      var modeName=(typeof MODES!=='undefined'&&typeof S!=='undefined'&&MODES[S.mode])?MODES[S.mode].name:'unknown';
-      var result=_fireDrop.apply(this,arguments);
-      record('drop_triggered',{auto:!!auto,effect:sel,mode_name:modeName});
+  var _beginTrip=beginTrip;
+  window.beginTrip=beginTrip=function(prof){
+    var result=_beginTrip.apply(this,arguments);
+    tripT0=Date.now();
+    record('trip_started',{substance_id:prof.id,substance_name:prof.name,planned_dur_min:prof.arc&&prof.arc.dur?Math.round(prof.arc.dur/60):null});
+    return result;
+  };
+
+  var _endTrip=endTrip;
+  window.endTrip=endTrip=function(){
+    var result=_endTrip.apply(this,arguments);
+    record('trip_ended',{trip_duration_sec:tripT0?Math.round((Date.now()-tripT0)/1000):null});
+    tripT0=null;
+    return result;
+  };
+
+  var _fireDrop=fireDrop;
+  window.fireDrop=fireDrop=function(auto){
+    var sel=S.dropFxSel>0?DROP_FX[S.dropFxSel-1].name:'auto';
+    var modeName=MODES[S.mode]?MODES[S.mode].name:'unknown';
+    var result=_fireDrop.apply(this,arguments);
+    record('drop_triggered',{auto:!!auto,effect:sel,mode_name:modeName});
+    return result;
+  };
+
+  var _setWall=setWall;
+  window.setWall=setWall=function(i){
+    var result=_setWall.apply(this,arguments);
+    record('wallpaper_toggled',{group_index:i,group_name:WALLPAPERS[i]||'unknown'});
+    return result;
+  };
+
+  var _showScience=showScience;
+  window.showScience=showScience=function(){
+    var result=_showScience.apply(this,arguments);
+    record('science_opened',{mode_index:S.mode,mode_name:MODES[S.mode]?MODES[S.mode].name:'unknown'});
+    return result;
+  };
+
+  var _snapState=snapState;
+  window.snapState=snapState=function(){
+    var result=_snapState.apply(this,arguments);
+    record('scene_saved',{mode_name:MODES[S.mode]?MODES[S.mode].name:'unknown',substance_id:S.substance});
+    return result;
+  };
+
+  var _applyState=applyState;
+  window.applyState=applyState=function(s){
+    var result=_applyState.apply(this,arguments);
+    record('scene_recalled',{mode_index:s?s.mode:null,substance_id:s?s.substance:null});
+    return result;
+  };
+
+  // autopilot is bound via bindToggle (inline onclick), wrap the DOM element directly
+  var _tgJourney=document.getElementById('tgJourney');
+  if(_tgJourney){
+    var _tgJourneyClick=_tgJourney.onclick;
+    _tgJourney.onclick=function(){
+      var result=_tgJourneyClick&&_tgJourneyClick.apply(this,arguments);
+      record('autopilot_toggled',{on:S.journey});
       return result;
     };
-  },150);
+  }
 
   // Session end — summary dogfeed event
   window.addEventListener('beforeunload',function(){
