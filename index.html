@@ -228,6 +228,7 @@
       <div class="pill active" data-src="mic">♪ mic · room</div>
       <div class="pill" data-src="file">📁 file · track</div>
       <div class="pill" data-src="system">▣ browser tab</div>
+      <div class="pill" data-src="beat" style="border-color:rgba(0,200,200,0.4);color:#00d4ff">♪ vaked beat</div>
     </div>
     <input type="file" id="audioFile" accept="audio/*" style="display:none">
     <select id="audioDev" class="audsel" title="audio input device"></select>
@@ -2609,6 +2610,37 @@ async function enableAudio(){
       stream.getVideoTracks().forEach(t=>t.stop());
       if(stream.getAudioTracks().length===0){ stream.getTracks().forEach(t=>t.stop()); setAudioStatus('⚠ no audio in that capture — pick a <b>Chrome Tab</b> + tick <b>Share tab audio</b> (or use 📁 file)','warn'); return; }
       AUDIO.stream=stream; node=AUDIO.ctx.createMediaStreamSource(stream); onendTrack=stream.getAudioTracks()[0];
+    } else if(src==='beat'){
+      // Vaked Beat — Genesis-seeded oscillators: sub-bass + brown noise + harmonic
+      // Mirrors beat.vaked.dev, routed locally through AUDIO.analyser
+      const bCtx = AUDIO.ctx;
+      const beatGain = bCtx.createGain(); beatGain.gain.value = 0.7;
+      // Sub-bass (41.2 Hz — same as beat.vaked.dev)
+      const sub = bCtx.createOscillator(); sub.type='sine'; sub.frequency.value=41.2;
+      const subF = bCtx.createBiquadFilter(); subF.type='lowpass'; subF.frequency.value=200;
+      sub.connect(subF); subF.connect(beatGain); sub.start();
+      // Brown noise
+      const bs = bCtx.sampleRate*2, nb = bCtx.createBuffer(1,bs,bCtx.sampleRate), nd = nb.getChannelData(0);
+      let lo=0; for(let i=0;i<bs;i++){const w=Math.random()*2-1; nd[i]=(lo+0.02*w)/1.02; lo=nd[i];}
+      const ns=bCtx.createBufferSource(); ns.buffer=nb; ns.loop=true;
+      const nf=bCtx.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=80;
+      const ng=bCtx.createGain(); ng.gain.value=0.08;
+      ns.connect(nf); nf.connect(ng); ng.connect(beatGain); ns.start();
+      // Harmonic (220 Hz pulses)
+      const harm=bCtx.createOscillator(); harm.type='sine'; harm.frequency.value=220;
+      const hg=bCtx.createGain(); hg.gain.value=0; harm.connect(hg); hg.connect(beatGain); harm.start();
+      const beatBPM=60, bi=60/beatBPM;
+      const kickInterval = setInterval(()=>{
+        if(!S.audio.on||S.audio.source!=='beat'){clearInterval(kickInterval);return;}
+        const now=bCtx.currentTime;
+        hg.gain.setTargetAtTime(0.12,now,0.005);
+        hg.gain.setTargetAtTime(0,now+bi*0.15,bi*0.3);
+      },1000);
+      // Store refs for disableAudio
+      window._vakedBeat={sub,ns,harm,hg,subF,nf,ng,beatGain,kickInterval};
+      node = beatGain;
+      // Connect to destination so user hears it
+      beatGain.connect(bCtx.destination);
     } else {
       const ac={echoCancellation:false,noiseSuppression:false,autoGainControl:false};
       if(S.audio.deviceId) ac.deviceId={exact:S.audio.deviceId};   // e.g. BlackHole → captures all machine audio
@@ -2641,6 +2673,15 @@ async function enableAudio(){
 }
 function disableAudio(){
   S.audio.on=false;
+  if(window._vakedBeat){
+    const vb=window._vakedBeat;
+    clearInterval(vb.kickInterval);
+    try{vb.sub.stop();}catch(e){}
+    try{vb.ns.stop();}catch(e){}
+    try{vb.harm.stop();}catch(e){}
+    try{vb.beatGain.disconnect();}catch(e){}
+    window._vakedBeat=null;
+  }
   if(AUDIO.stream){ AUDIO.stream.getTracks().forEach(t=>t.stop()); AUDIO.stream=null; }
   if(AUDIO.src){ try{AUDIO.src.disconnect();}catch(e){} AUDIO.src=null; }
   if(AUDIO.splitter){ try{AUDIO.splitter.disconnect();}catch(e){} AUDIO.splitter=null; }
@@ -2780,7 +2821,7 @@ document.querySelectorAll('#audioSrc .pill').forEach(p=>{ p.onclick=()=>{
   if(S.audio.on){ disableAudio(); enableAudio(); }            // restart with the new source
   else { const sc=p.dataset.src; setAudioStatus(
       sc==='file'   ? '📁 file — hit <b>♫ listen</b> (or drag an audio file anywhere) · the track gets <b>✦ analysed</b> for predictive, timeline-synced drops'
-      : sc==='system' ? (isFirefox?'⚠ Firefox can’t capture tab/system audio — use <b>📁 file</b> or <b>♪ mic</b>':'tab — hit <b>♫ listen</b>, pick <b>any tab playing audio</b> + tick <b>Share tab audio</b> · works with YouTube/SoundCloud/Bandcamp etc. (Spotify web is DRM-muted → use its desktop app + loopback)')
+      : sc==='beat' ? 'vaked beat — hit <b>♫ listen</b> · genesis-seeded sub-bass + noise · or open <a href="https://beat.vaked.dev" target="_blank" style="color:#00d4ff">beat.vaked.dev</a> for the full visual' : sc==='system' ? (isFirefox?'⚠ Firefox can’t capture tab/system audio — use <b>📁 file</b> or <b>♪ mic</b>':'tab — hit <b>♫ listen</b>, pick <b>any tab playing audio</b> + tick <b>Share tab audio</b> · works with YouTube/SoundCloud/Bandcamp etc. (Spotify web is DRM-muted → use its desktop app + loopback)')
       : 'mic — hit <b>♫ listen</b>, aim it at your speakers/phone',
       (isFirefox && sc==='system') ? 'warn' : ''); }
 }; });
@@ -3085,5 +3126,8 @@ refreshDevices();
 requestAnimationFrame(frame);
 console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neural-field engine online. mathematics of hallucination running.');
 </script>
+<div style="position:fixed;bottom:8px;right:12px;font-size:9px;color:rgba(0,200,200,0.35);pointer-events:none;z-index:1;font-family:monospace;">
+  music.vaked.dev · <a href="https://beat.vaked.dev" style="color:rgba(0,200,200,0.5);pointer-events:all;" target="_blank">beat</a> · <a href="https://protocol.vaked.dev" style="color:rgba(0,200,200,0.5);pointer-events:all;" target="_blank">protocol</a>
+</div>
 </body>
 </html>
