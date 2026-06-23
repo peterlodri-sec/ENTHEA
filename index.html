@@ -3126,6 +3126,79 @@ refreshDevices();
 requestAnimationFrame(frame);
 console.log('%cENTHEA','color:#b48bff;font-size:20px;font-weight:bold','— neural-field engine online. mathematics of hallucination running.');
 </script>
+<script>
+/* ── Vaked Telemetry + Dogfeed — music.vaked.dev ─────────────────────────
+   Tier 2: anon structural metadata only. No audio content. No PII.
+   Events: page_view, mode_change, audio_source, session_end
+   Destination: chat.vaked.dev/api/telemetry → PeetPedro/ultrawhale-dogfood/telemetry/
+*/
+(function(){
+  var E='https://chat.vaked.dev/api/telemetry';
+  var buf=[];
+  var sid=crypto.randomUUID?crypto.randomUUID():(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+  var t0=Date.now();
+  var modeHistory=[];
+  var audioHistory=[];
+
+  function flush(){
+    if(!buf.length) return;
+    var ev=buf.splice(0);
+    fetch(E,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({events:ev})}).catch(function(){});
+  }
+
+  function record(type,data){
+    buf.push(Object.assign({type:type,timestamp:Date.now(),session_id:sid,page:'music.vaked.dev'},data||{}));
+    if(buf.length>=20) flush();
+  }
+
+  window.__vaked_telemetry=record;
+  record('page_view',{});
+
+  // Hook mode changes — patch setMode after it's defined
+  var _patchInterval=setInterval(function(){
+    if(typeof setMode!=='function') return;
+    clearInterval(_patchInterval);
+    var _setMode=setMode;
+    window.setMode=function(i,silent){
+      var result=_setMode.apply(this,arguments);
+      var modeName=(typeof MODES!=='undefined'&&MODES[i])?MODES[i].name:'mode_'+i;
+      modeHistory.push(modeName);
+      record('mode_change',{mode_index:i,mode_name:modeName,audio_source:(typeof S!=='undefined'?S.audio.source:'unknown')});
+      return result;
+    };
+    setMode=window.setMode;
+  },100);
+
+  // Hook audio source changes
+  var _patchAudioInterval=setInterval(function(){
+    if(typeof enableAudio!=='function') return;
+    clearInterval(_patchAudioInterval);
+    var _enableAudio=enableAudio;
+    window.enableAudio=function(){
+      var src=(typeof S!=='undefined'?S.audio.source:'unknown');
+      audioHistory.push(src);
+      record('audio_source',{source:src});
+      return _enableAudio.apply(this,arguments);
+    };
+    enableAudio=window.enableAudio;
+  },200);
+
+  // Session end — summary dogfeed event
+  window.addEventListener('beforeunload',function(){
+    var sessionSec=Math.round((Date.now()-t0)/1000);
+    record('session_end',{
+      duration_sec:sessionSec,
+      modes_used:modeHistory.length,
+      unique_modes:[...new Set(modeHistory)].length,
+      audio_sources:[...new Set(audioHistory)],
+      site:'music.vaked.dev'
+    });
+    if(buf.length) navigator.sendBeacon(E,JSON.stringify({events:buf}));
+  });
+
+  setInterval(flush,30000);
+})();
+</script>
 <div style="position:fixed;bottom:8px;right:12px;font-size:9px;color:rgba(0,200,200,0.35);pointer-events:none;z-index:1;font-family:monospace;">
   music.vaked.dev · <a href="https://beat.vaked.dev" style="color:rgba(0,200,200,0.5);pointer-events:all;" target="_blank">beat</a> · <a href="https://protocol.vaked.dev" style="color:rgba(0,200,200,0.5);pointer-events:all;" target="_blank">protocol</a>
 </div>
