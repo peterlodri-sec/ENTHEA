@@ -25,6 +25,7 @@ import (
 const wireMagic = "t3:"
 const wireJSONMagic = "t3j:" // ternarySIMDJSON — JSON on the machine's own wire
 const wireYAMLMagic = "t3y:" // qYAML — YAML on the machine's own wire
+const wireUTF16Magic = "t3u:" // ternaryQuantASCII — UTF-16 on the machine's own wire
 
 // checksumModelWidth is the 1-bit LLM's period — its weight vector length.
 const checksumModelWidth = 10
@@ -77,6 +78,132 @@ func fromBalanced(t []int8) int {
 		p *= 3
 	}
 	return v
+}
+
+// toBalanced16 writes a 16-bit value as eleven balanced trits (3^11 = 177147
+// ≥ 65536, so every UTF-16 code unit has a canonical representation).
+func toBalanced16(v int) [11]int8 {
+	var t [11]int8
+	for i := 0; i < 11; i++ {
+		r := v % 3
+		if r > 1 {
+			r -= 3
+		}
+		if r < -1 {
+			r += 3
+		}
+		v = (v - r) / 3
+		t[i] = int8(r)
+	}
+	return t
+}
+
+func fromBalanced16(t []int8) int {
+	v := 0
+	p := 1
+	for _, d := range t {
+		v += int(d) * p
+		p *= 3
+	}
+	return v
+}
+
+// utf16Units converts a Go string to UTF-16 code units (with surrogate
+// pairs for astral runes) — the JavaScript/Java-native shape of the text.
+func utf16Units(s string) []uint16 {
+	units := make([]uint16, 0, len(s))
+	for _, r := range s {
+		if r <= 0xFFFF {
+			units = append(units, uint16(r))
+		} else {
+			r -= 0x10000
+			units = append(units, uint16(0xD800+(r>>10)), uint16(0xDC00+(r&0x3FF)))
+		}
+	}
+	return units
+}
+
+func utf16String(units []uint16) string {
+	runes := make([]rune, 0, len(units))
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		if u >= 0xD800 && u <= 0xDBFF && i+1 < len(units) {
+			l := units[i+1]
+			if l >= 0xDC00 && l <= 0xDFFF {
+				runes = append(runes, rune(0x10000+((int(u)-0xD800)<<10)+(int(l)-0xDC00)))
+				i++
+				continue
+			}
+		}
+		runes = append(runes, rune(u))
+	}
+	return string(runes)
+}
+
+// EncodeUTF16 writes a string as UTF-16 code units on the ternary wire:
+// each 16-bit unit is eleven balanced trits, framed t3u:…:checksum, judged
+// by the same 1-bit model. The constellation's languages (chinese, japanese,
+// tibetan) travel as their native code units, byte-exact.
+func EncodeUTF16(s string) string {
+	units := utf16Units(s)
+	out := make([]byte, 0, len(units)*11+len(wireUTF16Magic)+2)
+	out = append(out, wireUTF16Magic...)
+	trits := make([]int8, 0, len(units)*11)
+	for _, u := range units {
+		t := toBalanced16(int(u))
+		for _, d := range t {
+			out = append(out, tritToChar(d))
+			trits = append(trits, d)
+		}
+	}
+	out = append(out, ':')
+	out = append(out, tritToChar(int8(verdict(trits))))
+	return string(out)
+}
+
+// DecodeUTF16 parses a t3u: frame back to a string, verifying the verdict.
+func DecodeUTF16(s string) (string, error) {
+	if len(s) < len(wireUTF16Magic)+2 {
+		return "", fmt.Errorf("pure: frame too short")
+	}
+	if s[:len(wireUTF16Magic)] != wireUTF16Magic {
+		return "", fmt.Errorf("pure: not a %q frame", wireUTF16Magic)
+	}
+	body := s[len(wireUTF16Magic):]
+	if len(body) < 2 {
+		return "", fmt.Errorf("pure: frame too short")
+	}
+	payload := body[:len(body)-2]
+	sep := body[len(body)-2]
+	checksumChar := body[len(body)-1]
+	if sep != ':' {
+		return "", fmt.Errorf("pure: missing checksum separator")
+	}
+	if len(payload)%11 != 0 {
+		return "", fmt.Errorf("pure: payload %d chars is not a multiple of 11", len(payload))
+	}
+	trits := make([]int8, 0, len(payload))
+	units := make([]uint16, 0, len(payload)/11)
+	for i := 0; i < len(payload); i += 11 {
+		var t [11]int8
+		for j := 0; j < 11; j++ {
+			d, err := charToTrit(payload[i+j])
+			if err != nil {
+				return "", err
+			}
+			t[j] = d
+			trits = append(trits, d)
+		}
+		units = append(units, uint16(fromBalanced16(t[:])))
+	}
+	want, err := charToTrit(checksumChar)
+	if err != nil {
+		return "", err
+	}
+	if int8(verdict(trits)) != want {
+		return "", fmt.Errorf("pure: the 1-bit model rejects the frame (checksum mismatch)")
+	}
+	return utf16String(units), nil
 }
 
 // verdict runs the 1-bit model: qdot of the payload trits against the

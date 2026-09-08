@@ -24,6 +24,7 @@ import (
 
 	"github.com/8b-is/enthea/compress"
 	"github.com/8b-is/enthea/doom"
+	"github.com/8b-is/enthea/internal/languages"
 	"github.com/8b-is/enthea/internal/mcp"
 	"github.com/8b-is/enthea/internal/personas"
 	"github.com/8b-is/enthea/internal/ui"
@@ -48,6 +49,7 @@ var registry = map[string]Command{
 	"setup":    {Help: "wire MCP + personas into a client (opencode, charm, …)", Run: runSetup},
 	"doctor":   {Help: "check the engine and constellation surfaces", Run: runDoctor},
 	"lang":     {Help: "boot the enthea machine: run a program on its own arena", Run: runLang},
+	"languages": {Help: "eight tongues on the wire — the constellation's language lane", Run: runLanguages},
 	"fn":       {Help: "compile + run a pure enthea expression (the seed's language)", Run: runFn},
 	"bus":      {Help: "run a Go channel of 1-bit models (weights in, results out)", Run: runBus},
 	"quantctx": {Help: "the living context: sliding window of quantized tokens", Run: runQuantCtx},
@@ -496,6 +498,54 @@ weights:
 	}
 	fmt.Println()
 	fmt.Println("  every channel item is an executable model: weights in, classification out.")
+	return nil
+}
+
+// --- languages ---
+
+// runLanguages shows the eight tongues on the ternaryPureASCII wire: each
+// lane's phrase, its frame, and the agglutination bridges between them.
+// `enthea languages <name>` shows one lane in full.
+func runLanguages(_ context.Context, args []string) error {
+	langs := languages.All()
+	if len(args) > 0 {
+		l, err := languages.ByName(args[0])
+		if err != nil {
+			return err
+		}
+		ok, err := languages.RoundTrip(l)
+		if err != nil {
+			return err
+		}
+		fmt.Println("enthea languages -", l.Name, "(" + l.Native + ")")
+		fmt.Println("  script    ", l.Script, "· family", l.Family, "· agglutinative", l.Agglutin)
+		fmt.Println("  phrase    ", l.Phrase)
+		fmt.Println("  wire      ", l.Wire)
+		fmt.Println("  bridge    ", l.Bridge)
+		fmt.Println("  round-trip byte-identical:", ok)
+		return nil
+	}
+	fmt.Println("enthea languages — eight tongues, one wire")
+	fmt.Println()
+	for _, l := range langs {
+		ok, err := languages.RoundTrip(l)
+		if err != nil {
+			return err
+		}
+		mark := "OK"
+		if !ok {
+			mark = "MISMATCH"
+		}
+		fmt.Printf("  %-22s %-12s %-14s agglutin %v  %s\n", l.Name, l.Native, l.Script, l.Agglutin, mark)
+		fmt.Println("    " + l.Phrase)
+		fmt.Println("    " + l.Wire)
+	}
+	es, hu := languages.BridgePair()
+	fmt.Println()
+	fmt.Println("  the esperanto <-> hungarian bridge (the Budapest Method, Kalocsay's Madach):")
+	fmt.Println("    esperanto  " + es)
+	fmt.Println("    hungarian  " + hu)
+	fmt.Println("    both agglutinative — -eco/-ejo <-> -sag/-seg/-hely, the wire's own suffix stack")
 	return nil
 }
 
