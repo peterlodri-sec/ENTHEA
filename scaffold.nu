@@ -35,7 +35,7 @@ def note [msg: string] { print $"(ansi default_dimmed)· ($msg)(ansi reset)" }
 def err [msg: string] { print $"(ansi red)✗ ($msg)(ansi reset)"; exit 1 }
 
 def probe [lane: record] {
-    let found = (try { do -i (parse-run ($lane.check | split ' ')) } catch { false })
+    let found = (try { do -i (parse-run ($lane.check | split row " ")) } catch { false })
     { name: $lane.name, kind: $lane.kind, warm: $found, note: $lane.note }
 }
 
@@ -57,8 +57,7 @@ def cmd-doctor [] {
     print ""
     let lanes = (layout | each { |l| probe $l })
     for $l in $lanes {
-        if $l.warm { ok $"($l.name) (ansi default_dimmed)($l.kind)(ansi reset) — ($l.note)" }
-        else { note $"($l.name) (ansi yellow)($l.kind)(ansi reset) — dark: ($l.note)" }
+        if $l.warm { ok $"($l.name) (ansi default_dimmed)($l.kind)(ansi reset) — ($l.note)" } else { note $"($l.name) (ansi yellow)($l.kind)(ansi reset) — dark: ($l.note)" }
     }
     let warm = ($lanes | where warm | length)
     print ""
@@ -71,13 +70,9 @@ def cmd-install [] {
     print ""
     let lanes = (layout | each { |l| probe $l })
     for $l in $lanes {
-        if $l.warm {
-            ok $"($l.name) already warm"
-        } else {
+        if $l.warm { ok $"($l.name) already warm" } else {
             note $"($l.name) installing…"
-            let parts = ($l.install | split ' ')
-            let bin = $parts | first
-            # the install command is a single line; run it as a shell string
+            let parts = ($l.install | split row " ")
             let res = (run-external $parts.0 ...($parts | skip 1) | complete)
             if $res.exit_code == 0 { ok $"($l.name) installed" } else { err $"($l.name) failed to install: ($res.stderr)" }
         }
@@ -129,13 +124,13 @@ def cmd-flakes-mini [] {
 }
 
 # --- dispatch ---
-let cmd = if ($0 | path basename) == "scafford.nu" { $env.CMDLINE | split row " " | get 1 } else { $env.CMDLINE | split row " " | get 1 }
-let sub = if (($cmd | str trim | str length) > 0) { $cmd } else { "doctor" }
-match $sub {
-    "layout" => { cmd-layout }
-    "doctor" => { cmd-doctor }
-    "install" => { cmd-install }
-    "wire" => { cmd-wire }
-    "flakes-mini" => { cmd-flakes-mini }
-    _ => { print "enthea scaffold — subcommands: layout, doctor, install, wire, flakes-mini"; cmd-doctor }
+def main [sub: string = "doctor"] {
+    match $sub {
+        "layout" => { cmd-layout }
+        "doctor" => { cmd-doctor }
+        "install" => { cmd-install }
+        "wire" => { cmd-wire }
+        "flakes-mini" => { cmd-flakes-mini }
+        _ => { print "enthea scaffold — subcommands: layout, doctor, install, wire, flakes-mini"; cmd-doctor }
+    }
 }
