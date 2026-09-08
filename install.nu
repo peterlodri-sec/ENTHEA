@@ -117,3 +117,12 @@ export def main [
 
     ok $"enthea ready — try: enthea personas | enthea doctor"
 }
+
+# --- scaffold — the meta-programming installer for the constellation ---
+# The scaffold carries the latest-1 layout registry and meta-programs from
+# it: doctor probes every lane, install fills what is missing, wire connects
+# the lanes into clients, flakes-mini generates and enters a minimal nix
+# sandbox. See scaffold.nu.
+def scaffold [sub: string = "doctor"] {
+    nu (path join (dirname (which enthea | get path | first)) "scaffold.nu") $sub
+}

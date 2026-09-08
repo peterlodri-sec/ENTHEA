@@ -127,3 +127,77 @@ func BridgePair() (string, string) {
 	hu, _ := ByName("hungarian")
 	return es.Wire, hu.Wire
 }
+
+// ── protobuf formats — the typed lane ─────────────────────────────────────
+// Every string the door speaks has a struct; every struct has a protobuf
+// wire format (pure-stdlib codec in pure/proto.go). The typed frame then
+// travels on the ternary wire as t3p: — byte-identical round-trip.
+
+// Proto encodes the Language as a protobuf message.
+func (l Language) Proto() []byte {
+	return pure.EncodeProto([]pure.ProtoField{
+		{Num: 1, Wire: 2, Byt: []byte(l.Name)},
+		{Num: 2, Wire: 2, Byt: []byte(l.Native)},
+		{Num: 3, Wire: 2, Byt: []byte(l.Script)},
+		{Num: 4, Wire: 2, Byt: []byte(l.Family)},
+		{Num: 5, Wire: 0, Var: boolToUint(l.Agglutin)},
+		{Num: 6, Wire: 2, Byt: []byte(l.Phrase)},
+		{Num: 7, Wire: 2, Byt: []byte(l.Wire)},
+		{Num: 8, Wire: 2, Byt: []byte(l.Bridge)},
+	})
+}
+
+// FromProto decodes a protobuf message back into a Language.
+func FromProto(b []byte) (Language, error) {
+	fields, err := pure.DecodeProto(b)
+	if err != nil {
+		return Language{}, err
+	}
+	var l Language
+	if f := pure.FieldsOf(fields, 1); f != nil {
+		l.Name = string(f.Byt)
+	}
+	if f := pure.FieldsOf(fields, 2); f != nil {
+		l.Native = string(f.Byt)
+	}
+	if f := pure.FieldsOf(fields, 3); f != nil {
+		l.Script = string(f.Byt)
+	}
+	if f := pure.FieldsOf(fields, 4); f != nil {
+		l.Family = string(f.Byt)
+	}
+	if f := pure.FieldsOf(fields, 5); f != nil {
+		l.Agglutin = f.Var != 0
+	}
+	if f := pure.FieldsOf(fields, 6); f != nil {
+		l.Phrase = string(f.Byt)
+	}
+	if f := pure.FieldsOf(fields, 7); f != nil {
+		l.Wire = string(f.Byt)
+	}
+	if f := pure.FieldsOf(fields, 8); f != nil {
+		l.Bridge = string(f.Byt)
+	}
+	return l, nil
+}
+
+// ProtoFrame writes the Language's protobuf on the ternary wire (t3p:).
+func (l Language) ProtoFrame() string {
+	return pure.EncodeProtoFrame(l.Proto())
+}
+
+// FromProtoFrame parses a t3p: frame back into a Language.
+func FromProtoFrame(s string) (Language, error) {
+	b, err := pure.DecodeProtoFrame(s)
+	if err != nil {
+		return Language{}, err
+	}
+	return FromProto(b)
+}
+
+func boolToUint(b bool) uint64 {
+	if b {
+		return 1
+	}
+	return 0
+}

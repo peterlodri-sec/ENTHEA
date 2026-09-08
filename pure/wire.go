@@ -26,6 +26,7 @@ const wireMagic = "t3:"
 const wireJSONMagic = "t3j:" // ternarySIMDJSON — JSON on the machine's own wire
 const wireYAMLMagic = "t3y:" // qYAML — YAML on the machine's own wire
 const wireUTF16Magic = "t3u:" // ternaryQuantASCII — UTF-16 on the machine's own wire
+const wireProtoMagic = "t3p:" // ternaryProtobuf — typed structs on the machine's own wire
 
 // checksumModelWidth is the 1-bit LLM's period — its weight vector length.
 const checksumModelWidth = 10
